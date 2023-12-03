@@ -1,0 +1,5 @@
+# pull latest postgres image
+FROM postgres:latest
+
+# copy the initialization script to create a table 
+COPY init.sql /docker-entrypoint-initdb.d/

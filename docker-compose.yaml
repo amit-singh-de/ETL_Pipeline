@@ -1,0 +1,72 @@
+version: '3.8'
+services:
+  postgres:
+    container_name: postgres
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    networks:
+        - mynetwork
+    ports:
+      - "5432:5432"
+    restart: always
+    volumes:
+      - ./data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=airflow
+  pyspark:
+    depends_on:
+      - postgres
+    container_name: pyspark
+    image: jupyter/pyspark-notebook
+    networks:
+        - mynetwork
+    ports:
+      - "8888:8888"
+      - "5000:5000"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install flask
+        start-notebook.sh --NotebookApp.token='' &  # Run notebook in background
+        python /home/jovyan/work/api.py
+  airflow:
+      depends_on:
+        - postgres
+      container_name: airflow
+      networks:
+        - mynetwork
+      build:     
+        context: .
+        dockerfile: Dockerfile.airflow
+      restart: always
+      environment:
+        - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+        - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+        - AIRFLOW__WEBSERVER__CREATE_USER=True  # Create an initial user
+      ports:
+        - "8080:8080"
+      volumes:
+        - ./airflow/dags:/opt/airflow/dags
+        - ./airflow/plugins:/opt/airflow/plugins
+        - ./notebooks:/opt/airflow/pyspark
+      command: >
+        bash -c '
+          airflow db init &&
+          airflow users create --role Admin --username admin --password admin --email admin@example.com --firstname Admin --lastname User &&
+          airflow webserver -D &&
+          airflow scheduler &&
+          airflow connections add --conn_id spark_api --conn_type http --conn_host pyspark --conn_port 5000'
+networks:
+  mynetwork:
+
+
+
+
+
